@@ -55,7 +55,7 @@ class Neo4JConnector {
 
   def addNode(node: String, tags: Array[(String, String)]): Unit = {
     for (pair <- tags) {
-      Await.result(driver.run(
+      driver.run(
         """
           | MATCH (n:Concept)
           | WHERE n.name={tag}
@@ -64,7 +64,7 @@ class Neo4JConnector {
           "tag" -> pair._1,
           "column" -> pair._2,
           "node" -> node
-        )), 10.second)
+      ))
     }
   }
 }
