@@ -12,9 +12,8 @@ import java.net.{SocketTimeoutException, UnknownHostException}
 import javax.net.ssl.SSLHandshakeException
 
 import Neo4jConnector.Neo4JConnector
-
 import scala.collection.mutable.ListBuffer
-import scala.collection.parallel.mutable
+
 
 // case classes
 case class metaDataParams(name:String,id:String,columns:Vector[String],permalink:String)
@@ -42,6 +41,7 @@ object FisheyeWrapper extends LazyLogging with JsonWorkHorse {
   private var offset = 0
 
 
+
   def main(args:Array[String]): Unit = {
     args.length match {
       case 0 => println("No data source defined")
@@ -53,18 +53,21 @@ object FisheyeWrapper extends LazyLogging with JsonWorkHorse {
   def buildVisualGraph(datasource:String):Unit = {
     if(datasource == "socrata"){
 
-      val metadataParams : Vector[metaDataParams]= getAllMetaDataParams().take(100)
+      val driver = new Neo4JConnector
+      driver.drop()
+      driver.init()
+      val metadataParams : Vector[metaDataParams]= getAllMetaDataParams().take(100) //TODO: delete this take
       val predParams: Vector[PredictionDataParams] = metadataParams.map{ m =>
-        val predVec = getTagList(m.permalink, m.columns).toVector
+        val predVec = getTagList(m,  driver).toVector
         //println("Prediction Vector:" + predVec)
         PredictionDataParams(m.name,m.id,predVec,m.permalink)
       }
-      buildNeo4jGraph(predParams)
+      //buildNeo4jGraph(predParams)
 
       //println(predParams) //DELETE THIS
 
 
-      }
+    }
     else{
       println("Unidentified Data Source. Try again with valid data source")
     }
@@ -83,11 +86,11 @@ object FisheyeWrapper extends LazyLogging with JsonWorkHorse {
 
   }
 
-//  def createMapfromCC(predParam : PredictionResults): Unit ={
-//    val newMapp =
-//    predParam.getClass().getDeclaredFields().foreach(println)
-//
-//  }
+  //  def createMapfromCC(predParam : PredictionResults): Unit ={
+  //    val newMapp =
+  //    predParam.getClass().getDeclaredFields().foreach(println)
+  //
+  //  }
 
   def getCCParams(cc: PredictionResults) =
     (Map[String, String]() /: cc.getClass.getDeclaredFields) {(a, f) =>
@@ -95,16 +98,16 @@ object FisheyeWrapper extends LazyLogging with JsonWorkHorse {
       a + (f.getName -> f.get(cc).asInstanceOf[String])
     }
 
-  def getTagList(permalink:String, colVec: Vector[String]): List[PredictionResults] ={
+  def getTagList(m:metaDataParams, driver:Neo4JConnector): List[PredictionResults] ={
     var predictedTags = ListBuffer[PredictionResults]()
-    //val permalink : String = //"https://data.cityofboston.gov/d/msk6-43c6"
+    val permalink :String =  m.permalink//String = //"https://data.cityofboston.gov/d/msk6-43c6"
     //for
-    //val columnName : String = "zip"
+    val colVec : Vector[String] = m.columns //"zip"
+    println(permalink)
     val requestURL : String = getRequestURL(permalink, LIMIT)
     val data = fetchData(requestURL)
-
-
     //      toJson(data).asObject.get.apply("zip").get.asArray
+    println("Got data")
     val parsedData = parser.parse(data.getOrElse("")).getOrElse(Json.Null)
     if( parsedData != Json.Null){
       val arr = parsedData.asArray.getOrElse(Vector[Json]())
@@ -115,12 +118,21 @@ object FisheyeWrapper extends LazyLogging with JsonWorkHorse {
         objs.size match {
           case 0 => logger.info(s"No data for column:$c ")
           case _ =>
-            val prediction : PredictionResults = getColumnPrediction(objs, c)
+            var prediction : PredictionResults = getColumnPrediction(objs, c)
+            if(prediction.tag == "vehicle_plate"){
+              prediction = PredictionResults(prediction.confidence, "unknown", prediction.column)
+            }
             predictedTags += prediction
-        }
-        }
 
-    predictedTags.toList
+        }
+      }
+
+
+      val predictionMap = predictedTags.map(pred => getCCParams(pred))
+      println("Got predictionMap")
+      driver.addNode(m.name, predictionMap.toArray)
+      println("Node Added!")
+      predictedTags.toList
 
 
     }
@@ -134,9 +146,9 @@ object FisheyeWrapper extends LazyLogging with JsonWorkHorse {
 
   def fetchData(requestURL :String): Option[String] ={
 
-//    val dataResponse : HttpResponse[String] = Http(requestURL).option(HttpOptions.readTimeout(READ_TIMEOUT)).option(HttpOptions.connTimeout(CONN_TIMEOUT)).asString
-//    val resultArray : Option[Vector[Json]] = parser.parse(dataResponse).fold(_ => ???, json => json).asObject.get.apply("zip").get.asArray
-//    //val resultArray = toJson(dataResponse).asObject.get.apply("results").get.asArray
+    //    val dataResponse : HttpResponse[String] = Http(requestURL).option(HttpOptions.readTimeout(READ_TIMEOUT)).option(HttpOptions.connTimeout(CONN_TIMEOUT)).asString
+    //    val resultArray : Option[Vector[Json]] = parser.parse(dataResponse).fold(_ => ???, json => json).asObject.get.apply("zip").get.asArray
+    //    //val resultArray = toJson(dataResponse).asObject.get.apply("results").get.asArray
     logger.info(s"Making HTTP request to $requestURL")
 
     try{
