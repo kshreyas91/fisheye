@@ -38,19 +38,19 @@ class Neo4JConnector {
   val driver = new Neo4jAsyncDriver
 
   def drop(): List[Record] = {
-    return Await.result(driver.run("MATCH (n) DETACH DELETE n"), 10.second)
+    Await.result(driver.run("MATCH (n) DETACH DELETE n"), 10.second)
   }
 
   def init(): List[Record] = {
     Await.result(driver.run("CREATE (n:Concept {name: \"PII\"})"), 10.second)
-    return Await.result(driver.run(
+    Await.result(driver.run(
       """
         | MATCH (n:Concept {name:"PII"})
         | FOREACH (name in {classes} |
         | CREATE (n)-[:include]->(:Concept {name:name}))
       """.stripMargin, Map(
         "classes" -> classes
-      )), 10 second)
+      )), 10.second)
   }
 
   def addNode(node: String, tags: Array[(String, String)]): Unit = {
@@ -59,7 +59,7 @@ class Neo4JConnector {
         """
           | MATCH (n:Concept)
           | WHERE n.name={tag}
-          | CREATE (n)-[:has {column:{column}}]->(:Table {title:{node}})
+          | CREATE (:Table {title:{node}})-[:has {column:{column}}]->(n)
         """.stripMargin, Map(
           "tag" -> pair._1,
           "column" -> pair._2,
