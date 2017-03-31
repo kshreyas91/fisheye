@@ -70,12 +70,15 @@ class Neo4JConnector {
     */
   def addNode(title: String, connections: Array[Map[String, String]]): Unit = {
     val titleMap = Map("title" -> title)
+    Await.result(driver.run("CREATE(t:TABLE {title:{title}})", Map(
+      "title" -> title
+    )), 10.second)
     for (connection <- connections) {
       driver.run(
         """
-          | MATCH (n:Concept)
-          | WHERE n.name={tag}
-          | CREATE (:Table {title:{title}})-[:has {column:{column}, confidence:{confidence}}]->(n)
+          | MATCH (n:Concept), (t:TABLE)
+          | WHERE n.name={tag} AND t.title={title}
+          | CREATE (t)-[:has {column:{column}, confidence:{confidence}}]->(n)
         """.stripMargin, titleMap |+| connection)
     }
   }
