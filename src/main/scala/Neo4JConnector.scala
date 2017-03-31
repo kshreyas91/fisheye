@@ -52,4 +52,17 @@ class Neo4JConnector {
         ))
     }
   }
+
+  def addNode(node: String, tags: Array[String]): Unit = {
+    driver.run(
+      """
+        | FOREACH (tag in {tags} |
+        | MATCH (n:Concept {name:tag})
+        | CREATE (n)-[:has]->(:Table {title:node}))
+      """.stripMargin, Map(
+        "tags" -> tags,
+        "node" -> node
+      )
+    )
+  }
 }
