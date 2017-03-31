@@ -4,11 +4,11 @@
 
 package Neo4jConnector
 
+import scalaz.Scalaz._
 import scala.concurrent.duration._
 import Neo4jAsyncDriver.Neo4jAsyncDriver
 import org.neo4j.driver.v1._
 import scala.concurrent._
-import ExecutionContext.Implicits.global
 
 sealed trait FieldType
 case object PhoneNumber extends FieldType
@@ -43,6 +43,12 @@ class Neo4JConnector {
 
   def init(): List[Record] = {
     Await.result(driver.run("CREATE (n:Concept {name: \"PII\"})"), 10.second)
+    Await.result(driver.run("CREATE (n:Concept {name: \"None-PII\"})"), 10.second)
+    Await.result(driver.run(
+      """
+        | MATCH (n:Concept {name:"None-PII"})
+        | CREATE (n)-[:include]->(:Concept {name:"Unknown"})
+      """.stripMargin), 10.second)
     Await.result(driver.run(
       """
         | MATCH (n:Concept {name:"PII"})
@@ -53,18 +59,24 @@ class Neo4JConnector {
       )), 10.second)
   }
 
-  def addNode(node: String, tags: Array[(String, String)]): Unit = {
-    for (pair <- tags) {
+  /**
+    * add a node in neo4j
+    *
+    * @param title node title
+    * @param connections maps of properties, it should have following fields
+    *                    tag: the classifier result
+    *                    column: the column name of this connection
+    *                    confidence: the confidence score of this connection
+    */
+  def addNode(title: String, connections: Array[Map[String, String]]): Unit = {
+    val titleMap = Map("title" -> title)
+    for (connection <- connections) {
       driver.run(
         """
           | MATCH (n:Concept)
           | WHERE n.name={tag}
-          | CREATE (:Table {title:{node}})-[:has {column:{column}}]->(n)
-        """.stripMargin, Map(
-          "tag" -> pair._1,
-          "column" -> pair._2,
-          "node" -> node
-      ))
+          | CREATE (:Table {title:{title}})-[:has {column:{column}, confidence:{confidence}}]->(n)
+        """.stripMargin, titleMap |+| connection)
     }
   }
 }
