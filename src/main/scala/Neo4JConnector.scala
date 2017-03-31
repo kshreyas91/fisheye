@@ -24,16 +24,31 @@ case object Email extends FieldType
 case class Concept(name: String)
 case class FieldName(field: FieldType)
 
+
 class Neo4JConnector {
+
+  object tags{
+    val PHONE_NUMBER = "phone_number"
+    val VEHICLE_PLATE = "vehicle_plate"
+    val NAME = "name"
+    val CREDIT_CARD_NUMBER = "credit_card_number"
+    val IP = "ip_number"
+    val DATE = "date"
+    val STREET_ADDRESS = "street_addresse"
+    val EMAIL = "email"
+    val UNKNOWN = "unknown"
+  }
+
+
   val classes = Array(
-    "PhoneNumber",
-    "VehiclePlate",
-    "Name",
-    "CreditCardNumber",
-    "IpNumber",
-    "Date",
-    "StreetAddress",
-    "Email"
+    "phone_number",
+    "vehicle_plate",
+    "name",
+    "credit_card_number",
+    "ip_number",
+    "date",
+    "street_addresse",
+    "email"
   )
   val driver = new Neo4jAsyncDriver
 
@@ -47,7 +62,7 @@ class Neo4JConnector {
     Await.result(driver.run(
       """
         | MATCH (n:Concept {name:"None-PII"})
-        | CREATE (n)-[:include]->(:Concept {name:"Unknown"})
+        | CREATE (n)-[:include]->(:Concept {name:"unknown"})
       """.stripMargin), 10.second)
     Await.result(driver.run(
       """
@@ -70,12 +85,15 @@ class Neo4JConnector {
     */
   def addNode(title: String, connections: Array[Map[String, String]]): Unit = {
     val titleMap = Map("title" -> title)
+    Await.result(driver.run("CREATE(t:TABLE {title:{title}})", Map(
+      "title" -> title
+    )), 10.second)
     for (connection <- connections) {
       driver.run(
         """
-          | MATCH (n:Concept)
-          | WHERE n.name={tag}
-          | CREATE (:Table {title:{title}})-[:has {column:{column}, confidence:{confidence}}]->(n)
+          | MATCH (n:Concept), (t:TABLE)
+          | WHERE n.name={tag} AND t.title={title}
+          | CREATE (t)-[:has {column:{column}, confidence:{confidence}}]->(n)
         """.stripMargin, titleMap |+| connection)
     }
   }
