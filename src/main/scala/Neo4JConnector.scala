@@ -4,7 +4,9 @@
 
 package Neo4jConnector
 
+import scala.concurrent.duration._
 import Neo4jAsyncDriver.Neo4jAsyncDriver
+import org.neo4j.driver.v1._
 import scala.concurrent._
 import ExecutionContext.Implicits.global
 
@@ -35,34 +37,34 @@ class Neo4JConnector {
   )
   val driver = new Neo4jAsyncDriver
 
-  def drop(): Unit = {
-    driver.run("MATCH (n) DETACH DELETE n")
+  def drop(): List[Record] = {
+    return Await.result(driver.run("MATCH (n) DETACH DELETE n"), 10.second)
   }
 
-  def init(): Unit = {
-    var r = driver.run("CREATE (n:Concept {name: \"PII\"})")
-    r onComplete { case _ =>
-      driver.run(
-        """
-          | MATCH (n:Concept {name:"PII"})
-          | FOREACH (name in {classes} |
-          | CREATE (n)-[:include]->(:Concept {name:name}))
-        """.stripMargin, Map(
-          "classes" -> classes
-        ))
-    }
-  }
-
-  def addNode(node: String, tags: Array[String]): Unit = {
-    driver.run(
+  def init(): List[Record] = {
+    Await.result(driver.run("CREATE (n:Concept {name: \"PII\"})"), 10.second)
+    return Await.result(driver.run(
       """
-        | FOREACH (tag in {tags} |
-        | MATCH (n:Concept {name:tag})
-        | CREATE (n)-[:has]->(:Table {title:node}))
+        | MATCH (n:Concept {name:"PII"})
+        | FOREACH (name in {classes} |
+        | CREATE (n)-[:include]->(:Concept {name:name}))
       """.stripMargin, Map(
-        "tags" -> tags,
-        "node" -> node
-      )
-    )
+        "classes" -> classes
+      )), 10 second)
+  }
+
+  def addNode(node: String, tags: Array[(String, String)]): Unit = {
+    for (pair <- tags) {
+      Await.result(driver.run(
+        """
+          | MATCH (n:Concept)
+          | WHERE n.name={tag}
+          | CREATE (n)-[:has {column:{column}}]->(:Table {title:{node}})
+        """.stripMargin, Map(
+          "tag" -> pair._1,
+          "column" -> pair._2,
+          "node" -> node
+        )), 10.second)
+    }
   }
 }
